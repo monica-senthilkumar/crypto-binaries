@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cryptographic Protocol Identifier</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="dashboard">
+        <header>
+            <h1>Cryptographic Protocol Identifier</h1>
+            <p>Upload a file to get predictions</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Left Panel: Upload -->
+            <div class="panel upload-panel">
+                <h2>Upload File</h2>
+                <div class="upload-box">
+                    <label for="fileInput" class="upload-label">
+                        <span>Drop a file or click to select</span>
+                        <input type="file" id="fileInput">
+                    </label>
+                    <button id="uploadBtn">Analyze File</button>
+                    <button id="clearBtn" class="clear-btn">Clear</button>
+                </div>
+            </div>
+
+            <!-- Right Panel: Results -->
+            <div class="panel results-panel">
+                <h2>Predictions</h2>
+                <div class="results-card">
+                    <pre id="results">No results yet.</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

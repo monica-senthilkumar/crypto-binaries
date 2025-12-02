@@ -1,0 +1,142 @@
+/* ---- Reset ---- */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* ---- Body ---- */
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #0f111a;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 50px 0;
+}
+
+/* ---- Dashboard ---- */
+.dashboard {
+    width: 90%;
+    max-width: 1200px;
+}
+
+/* ---- Header ---- */
+header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+header h1 {
+    font-size: 2.5rem;
+    color: #00ffd5;
+    margin-bottom: 5px;
+}
+
+header p {
+    font-size: 1rem;
+    color: #b0b0b0;
+}
+
+/* ---- Main Content Grid ---- */
+.main-content {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: 30px;
+}
+
+/* ---- Panels ---- */
+.panel {
+    background: #1b1f2a;
+    border-radius: 15px;
+    padding: 25px;
+    box-shadow: 0 0 20px rgba(0, 255, 213, 0.2);
+    display: flex;
+    flex-direction: column;
+}
+
+/* ---- Upload Panel ---- */
+.upload-panel h2 {
+    color: #00ffd5;
+    margin-bottom: 15px;
+}
+
+.upload-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.upload-label {
+    width: 100%;
+    padding: 40px;
+    border: 2px dashed #00ffd5;
+    border-radius: 15px;
+    text-align: center;
+    cursor: pointer;
+    margin-bottom: 20px;
+    transition: all 0.3s ease;
+}
+
+.upload-label:hover {
+    background-color: rgba(0, 255, 213, 0.05);
+    border-color: #00ffa0;
+}
+
+.upload-label input[type="file"] {
+    display: none;
+}
+
+.upload-label span {
+    font-size: 1rem;
+    color: #00ffd5;
+}
+
+/* Buttons */
+#uploadBtn, .clear-btn {
+    margin-top: 10px;
+    width: 100%;
+    background: linear-gradient(90deg, #00ffd5, #00ffa0);
+    border: none;
+    padding: 12px 35px;
+    border-radius: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #0f111a;
+    transition: all 0.3s ease;
+}
+
+#uploadBtn:hover, .clear-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 15px #00ffd5, 0 0 30px #00ffa0 inset;
+}
+
+/* ---- Results Panel ---- */
+.results-panel h2 {
+    color: #00ffd5;
+    margin-bottom: 15px;
+}
+
+.results-card {
+    background: #0d0f20;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 0 15px rgba(0, 255, 213, 0.3);
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.results-card pre {
+    color: #00ffa0;
+    font-family: 'Share Tech Mono', monospace;
+    white-space: pre-wrap;
+}
+
+/* ---- Responsive ---- */
+@media screen and (max-width: 900px) {
+    .main-content {
+        grid-template-columns: 1fr;
+    }
+}
