@@ -1,133 +1,172 @@
-# train_gnn.py
 import torch
-from torch_geometric.loader import DataLoader 
-from sklearn.metrics import classification_report
-from models import GNNClassifier
-import random
+import torch.nn as nn
+from torch_geometric.nn import SAGEConv, global_mean_pool
+from torch_geometric.loader import DataLoader
+import numpy as np
+from sklearn.metrics import accuracy_score, classification_report
+from dataset_loader import load_dataset
 
-DATA_PATH = "synthetic_dataset.pt"
-BATCH_SIZE = 32
-EPOCHS = 50
-LR = 0.001
-PATIENCE = 8
 
-def load_dataset():
-    dataset = torch.load(DATA_PATH , weights_only=False)
-    print("Total samples:", len(dataset))
+# --------------------------
+# GNN MODEL
+# --------------------------
+class HighAccGNN(nn.Module):
+    def __init__(self, in_dim, hidden_dim, num_classes, dropout=0.4):
+        super().__init__()
 
-    random.shuffle(dataset)
+        self.conv1 = SAGEConv(in_dim, hidden_dim)
+        self.bn1 = nn.BatchNorm1d(hidden_dim)
 
-    train_size = int(0.7 * len(dataset))
-    val_size   = int(0.15 * len(dataset))
-    test_size  = len(dataset) - train_size - val_size
+        self.conv2 = SAGEConv(hidden_dim, hidden_dim)
+        self.bn2 = nn.BatchNorm1d(hidden_dim)
 
-    train_list = dataset[:train_size]
-    val_list   = dataset[train_size:train_size + val_size]
-    test_list  = dataset[-test_size:]
+        self.conv3 = SAGEConv(hidden_dim, hidden_dim)
+        self.bn3 = nn.BatchNorm1d(hidden_dim)
 
-    print(f"Splits -> train {len(train_list)}, val {len(val_list)}, test {len(test_list)}")
-    return train_list, val_list, test_list
+        self.dropout = nn.Dropout(dropout)
 
-def evaluate(model, loader, device):
-    model.eval()
-    correct = 0
-    total = 0
-    loss_sum = 0
-    criterion = torch.nn.CrossEntropyLoss()
+        self.fc1 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, num_classes)
 
-    with torch.no_grad():
-        for batch in loader:
-            batch = batch.to(device)
-            out = model(batch)
-            loss = criterion(out, batch.y)
-            loss_sum += loss.item()
+    def forward(self, x, edge_index, batch):
+        x = self.conv1(x, edge_index)
+        x = self.bn1(x)
+        x = torch.relu(x)
 
-            pred = out.argmax(dim=1)
-            correct += (pred == batch.y).sum().item()
-            total += batch.y.size(0)
+        x = self.conv2(x, edge_index)
+        x = self.bn2(x)
+        x = torch.relu(x)
 
-    return loss_sum / len(loader), correct / total
+        x = self.conv3(x, edge_index)
+        x = self.bn3(x)
+        x = torch.relu(x)
 
-def train():
+        x = global_mean_pool(x, batch)
+
+        x = self.dropout(x)
+        x = torch.relu(self.fc1(x))
+        x = self.fc2(x)
+
+        return x
+
+
+# --------------------------
+# TRAINING FUNCTION
+# --------------------------
+def train_model(dataset):
+    print("Using device:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU")
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Using device:", device)
 
-    train_list, val_list, test_list = load_dataset()
+    labels = [data.y.item() for data in dataset]
+    num_classes = len(set(labels))
+    print("Detected number of classes =", num_classes)
 
-    train_loader = DataLoader(train_list, batch_size=BATCH_SIZE, shuffle=True)
-    val_loader   = DataLoader(val_list, batch_size=BATCH_SIZE, shuffle=False)
-    test_loader  = DataLoader(test_list, batch_size=BATCH_SIZE, shuffle=False)
+    idx = np.arange(len(dataset))
+    np.random.shuffle(idx)
 
-    model = GNNClassifier().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-    criterion = torch.nn.CrossEntropyLoss()
+    train_split = int(0.70 * len(dataset))
+    val_split = int(0.15 * len(dataset))
 
+    train_idx = idx[:train_split]
+    val_idx = idx[train_split:train_split + val_split]
+    test_idx = idx[train_split + val_split:]
+
+    train_ds = [dataset[i] for i in train_idx]
+    val_ds = [dataset[i] for i in val_idx]
+    test_ds = [dataset[i] for i in test_idx]
+
+    train_loader = DataLoader(train_ds, batch_size=32, shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=32)
+    test_loader = DataLoader(test_ds, batch_size=32)
+
+    feat_dim = dataset[0].x.shape[1]
+    print("Input dim:", feat_dim)
+
+    model = HighAccGNN(feat_dim, hidden_dim=128, num_classes=num_classes).to(device)
+
+    class_counts = torch.bincount(torch.tensor(labels))
+    weights = 1.0 / class_counts.float()
+    weights = weights / weights.mean()
+
+    criterion = nn.CrossEntropyLoss(weight=weights.to(device))
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
+
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=15)
     best_acc = 0
-    patience = 0
+    patience_counter = 0
+    PATIENCE = 8
 
-    print("Starting GNN training...\n")
-    for epoch in range(1, EPOCHS + 1):
+    for epoch in range(40):
+
         model.train()
         total_loss = 0
-        correct = 0
-        total = 0
 
         for batch in train_loader:
             batch = batch.to(device)
-            optimizer.zero_grad()
 
-            out = model(batch)
-            loss = criterion(out, batch.y)
+            optimizer.zero_grad()
+            logits = model(batch.x, batch.edge_index, batch.batch)
+
+            loss = criterion(logits, batch.y)
             loss.backward()
             optimizer.step()
 
             total_loss += loss.item()
-            correct += (out.argmax(dim=1) == batch.y).sum().item()
-            total += batch.y.size(0)
 
-        train_loss = total_loss / len(train_loader)
-        train_acc = correct / total
+        scheduler.step()
 
-        val_loss, val_acc = evaluate(model, val_loader, device)
+        val_acc = evaluate(model, val_loader, device)
 
-        print(f"Epoch {epoch:03d} | train loss {train_loss:.4f} acc {train_acc:.4f} | "
-              f"val loss {val_loss:.4f} acc {val_acc:.4f}")
+        print(f"Epoch {epoch+1} | Train Loss {total_loss:.4f} | Val Acc {val_acc:.4f}")
 
-        # Save best model
         if val_acc > best_acc:
             best_acc = val_acc
-            patience = 0
-            torch.save(model.state_dict(), "gnn_best.pt")
-            print(f"  -> Saved new best model (epoch {epoch} | val_acc {val_acc:.4f})")
+            patience_counter = 0
+            torch.save(model.state_dict(), "best_gnn.pth")
+            print("🔥 Model improved and saved!")
         else:
-            patience += 1
+            patience_counter += 1
+            if patience_counter >= PATIENCE:
+                print("Early stopping triggered!")
+                break
 
-        if patience >= PATIENCE:
-            print("\nEarly stopping triggered.\n")
-            break
+    print("Training finished. Loading best model...")
+    model.load_state_dict(torch.load("best_gnn.pth"))
 
-    print("Training finished. Best val acc:", best_acc)
+    print("\nTesting...")
+    evaluate(model, test_loader, device, detailed=True)
 
-    # ----------- Load best model ----------------
-    model.load_state_dict(torch.load("gnn_best.pt"))
-    print("Loaded best GNN model for final testing...\n")
 
-    # ----------- Final Test ---------------------
-    test_loss, test_acc = evaluate(model, test_loader, device)
-    print(f"Test loss {test_loss:.4f} | Test acc {test_acc:.4f}")
-
-    # ----------- 5 Prediction Examples ----------
-    print("\n--- SAMPLE PREDICTIONS (5 graphs) ---")
+# --------------------------
+# EVALUATION FUNCTION
+# --------------------------
+def evaluate(model, loader, device, detailed=False):
     model.eval()
+    preds = []
+    labels = []
+
     with torch.no_grad():
-        for i in range(5):
-            sample = test_list[i].to(device)
-            out = model(sample)
-            pred = out.argmax().item()
-            true = sample.y.item()
-            print(f"Sample {i+1}: True = {true}, Predicted = {pred}")
+        for batch in loader:
+            batch = batch.to(device)
+            logits = model(batch.x, batch.edge_index, batch.batch)
+            pred = logits.argmax(dim=1).cpu()
+            preds.extend(pred.numpy())
+            labels.extend(batch.y.cpu().numpy())
 
-    print("\nDone.")
+    acc = accuracy_score(labels, preds)
 
+    if detailed:
+        print("Accuracy =", acc)
+        print("\nClass Report:\n", classification_report(labels, preds))
+
+    return acc
+
+
+# ----------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------
 if __name__ == "__main__":
-    train()
+    from dataset_loader import load_dataset   # <-- your loader function
+    dataset = load_dataset()
+    train_model(dataset)
